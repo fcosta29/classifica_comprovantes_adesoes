@@ -33,21 +33,20 @@ def carrega_imagem():
         st.success('Imagem foi carregada com sucesso')
 
         imagem_np = np.array(image_pil)
-        pontos = detectar_documento(imagem_np)
+        contorno = detectar_documento(imagem_np)
 
-        if pontos is not None:
-            documento_crop = recorte_documento(imagem_np, pontos)
-            st.image(documento_crop, caption='Documento Detectado (Recortado)', use_column_width=True)
+        if contorno is not None:
+            documento_crop = recorte_documento(imagem_np, contorno)
+            st.image(documento_crop, caption='Documento Detectado', use_column_width=True)
 
-            # Redimensionar para o modelo
-            documento_model = cv2.resize(documento_crop, (520, 112))  # Largura x Altura
+            # Redimensionar para modelo
+            documento_model = cv2.resize(documento_crop, (520, 112))
             documento_model = documento_model.astype(np.float32) / 255.0
             documento_model = np.expand_dims(documento_model, axis=0)
 
             return documento_model, image_data
-
         else:
-            st.warning("Não foi possível detectar o documento. Tente outra imagem.")
+            st.warning("Documento não encontrado. Verifique iluminação ou ângulo.")
             return None, None
 
     return None, None
@@ -90,21 +89,27 @@ def detectar_documento(imagem_rgb):
 
     contornos, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    doc_contorno = None
-    max_area = 0
+    maior_area = 0
+    contorno_documento = None
 
-    for c in contornos:
-        peri = cv2.arcLength(c, True)
-        aprox = cv2.approxPolyDP(c, 0.02 * peri, True)
-        area = cv2.contourArea(c)
+    for contorno in contornos:
+        peri = cv2.arcLength(contorno, True)
+        aprox = cv2.approxPolyDP(contorno, 0.02 * peri, True)
 
-        if len(aprox) == 4 and area > 10000:  # área mínima evita logos
-            if area > max_area:
-                doc_contorno = aprox
-                max_area = area
+        # Verifica se é um quadrilátero
+        if len(aprox) == 4:
+            area = cv2.contourArea(aprox)
+            x, y, w, h = cv2.boundingRect(aprox)
+            proporcao = w / float(h)
 
-    if doc_contorno is not None:
-        return doc_contorno.reshape(4, 2)
+            # Só considera se tiver área suficiente e for aproximadamente "folha"
+            if area > 50000 and 0.5 < proporcao < 2.0:
+                if area > maior_area:
+                    maior_area = area
+                    contorno_documento = aprox
+
+    if contorno_documento is not None:
+        return contorno_documento
     return None
 
 def recorte_documento(imagem, pontos):
@@ -131,7 +136,7 @@ def recorte_documento(imagem, pontos):
     return warped
 
 def ordenar_pontos(pontos):
-    """Ordena os pontos no sentido top-left, top-right, bottom-right, bottom-left"""
+    pontos = pontos.reshape(4, 2)
     ret = np.zeros((4, 2), dtype="float32")
     s = pontos.sum(axis=1)
     ret[0] = pontos[np.argmin(s)]
