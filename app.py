@@ -17,6 +17,7 @@ def carrega_modelo():
     return interpreter
 
 def main():
+    
     st.set_page_config(
     page_title="Classifica Comprovantes de adesão",
     )
