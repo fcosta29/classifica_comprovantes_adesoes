@@ -6,6 +6,7 @@ import io
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import cv2
 
 @st.cache_resource
 
@@ -71,6 +72,24 @@ def previsao(interpreter, image):
     
     st.plotly_chart(fig)
 
+def detectar_documento(imagem_rgb):
+    imagem_gray = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
+    blur = cv2.GaussianBlur(imagem_gray, (5, 5), 0)
+    edges = cv2.Canny(blur, 75, 200)
+
+    # Encontra contornos
+    contornos, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    contornos = sorted(contornos, key=cv2.contourArea, reverse=True)
+
+    for c in contornos:
+        peri = cv2.arcLength(c, True)
+        aprox = cv2.approxPolyDP(c, 0.02 * peri, True)
+
+        if len(aprox) == 4:
+            return aprox.reshape(4, 2)  # retorna as 4 coordenadas
+
+    return None
+
 def main():
 
     st.set_page_config(
@@ -87,7 +106,18 @@ def main():
     #st.write(image_bytes)
     #classifica
     if image is not None:
-        previsao(interpreter,image)
+        pontos = detectar_documento(image)
+
+        if pontos is not None:
+            imagem_com_contorno = image.copy()
+            cv2.polylines(imagem_com_contorno, [pontos], isClosed=True, color=(0, 255, 0), thickness=3)
+
+            st.image(imagem_com_contorno, caption='Documento Detectado', use_column_width=True)
+            previsao(interpreter,image)
+        else:
+            st.warning("Nenhum documento detectado automaticamente.")
+        
+        
         #Valida
         #valida_imagem_duplicada(image_bytes)
 
