@@ -36,6 +36,7 @@ def carrega_imagem():
         contorno = detectar_documento(imagem_np)
 
         if contorno is not None:
+            # Recorta o documento da imagem
             documento_crop = recorte_documento(imagem_np, contorno)
             st.image(documento_crop, caption='Documento Detectado', use_column_width=True)
 
@@ -83,16 +84,29 @@ def previsao(interpreter, image):
     st.plotly_chart(fig)
 
 def detectar_documento(imagem_rgb):
+    # Pré-processamento da imagem
     imagem_gray = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
+    
+    # Equalização de histograma para melhorar o contraste
+    imagem_gray = cv2.equalizeHist(imagem_gray)
+    
+    # Suavização para reduzir ruído
     blur = cv2.GaussianBlur(imagem_gray, (5, 5), 0)
+
+    # Detecção de bordas com Canny
     edges = cv2.Canny(blur, 50, 150)
 
-    contornos, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Aumentar as bordas para capturar maiores contornos
+    dilatada = cv2.dilate(edges, None, iterations=2)
+    
+    # Encontrar os contornos
+    contornos, _ = cv2.findContours(dilatada, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     maior_area = 0
     contorno_documento = None
 
     for contorno in contornos:
+        # Aproximação de polígono (verificando que o contorno é aproximadamente retangular)
         peri = cv2.arcLength(contorno, True)
         aprox = cv2.approxPolyDP(contorno, 0.02 * peri, True)
 
