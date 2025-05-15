@@ -38,6 +38,37 @@ def carrega_imagem():
         return image, image_data  # <- retorna a imagem e os bytes para hash
     return None, None
 
+def previsao(interpreter, image):
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    #st.write("Detalhes de Entrada (Input Details):")
+    #st.json(input_details)
+
+    #st.write("Detalhes de Saída (Output Details):")
+    #st.json(output_details)
+    
+    interpreter.set_tensor(input_details[0]['index'],image) 
+    
+    interpreter.invoke()
+    
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+
+    classes = ['comprovantes_assinados','comprovantes_nao_assinados']
+
+    df = pd.DataFrame()
+    df['classes'] = classes
+    df['probabilidades (%)'] = 100*output_data[0]
+
+    #st.write("Probabilidades por Classe:")
+    #st.json(df.set_index('classes')['probabilidades (%)'].round(2).to_dict())
+    
+    
+    fig = px.bar(df,y='classes',x='probabilidades (%)',  orientation='h', text='probabilidades (%)', title='Probabilidade de Classes de Radiografia')
+    
+    st.plotly_chart(fig)
+
 def main():
 
     st.set_page_config(
@@ -53,8 +84,8 @@ def main():
     #st.write("Bytes da imagem")
     #st.write(image_bytes)
     #classifica
-    #if image is not None:
-        #previsao(interpreter,image)
+    if image is not None:
+        previsao(interpreter,image)
         #Valida
         #valida_imagem_duplicada(image_bytes)
 
