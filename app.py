@@ -32,8 +32,8 @@ def carrega_imagem():
         st.image(image)
         st.success('Imagem foi carregada com sucesso')
 
-        # Redimensiona a imagem para 112x520 (necessário para o modelo)
-        image = image.resize((112, 520))
+        # Redimensiona a imagem para 520x112 (necessário para o modelo)
+        image = image.resize((520, 112)) #largura x altura
         image = np.array(image, dtype=np.float32) / 255.0
         image = np.expand_dims(image, axis=0)
 
