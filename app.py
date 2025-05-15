@@ -4,6 +4,7 @@ from PIL import Image
 import gdown
 import io
 import numpy as np
+import pandas as pd
 
 @st.cache_resource
 
@@ -65,7 +66,7 @@ def previsao(interpreter, image):
     #st.json(df.set_index('classes')['probabilidades (%)'].round(2).to_dict())
     
     
-    fig = px.bar(df,y='classes',x='probabilidades (%)',  orientation='h', text='probabilidades (%)', title='Probabilidade de Classes de Radiografia')
+    fig = px.bar(df,y='classes',x='probabilidades (%)',  orientation='h', text='probabilidades (%)', title='Probabilidade de Classes de Comprovantes')
     
     st.plotly_chart(fig)
 
