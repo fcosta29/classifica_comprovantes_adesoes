@@ -84,63 +84,68 @@ def previsao(interpreter, image):
     st.plotly_chart(fig)
 
 def detectar_documento(imagem_rgb):
-    # Converte a imagem para escala de cinza
     imagem_gray = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
 
-    # Equalização de histograma para melhorar o contraste
-    imagem_gray = cv2.equalizeHist(imagem_gray)
-    
-    # Suavização para reduzir ruído
-    blur = cv2.GaussianBlur(imagem_gray, (5, 5), 0)
-
-    # Detecta características usando ORB
+    # Detector ORB
     orb = cv2.ORB_create()
+
+    # Detecta keypoints e descritores da imagem de entrada
     kp1, des1 = orb.detectAndCompute(imagem_gray, None)
 
-    # Cria uma imagem padrão do documento (idealmente, deve ter uma imagem "template" do documento)
-    imagem_template = cv2.imread('template_documento.jpg', cv2.IMREAD_GRAYSCALE)  # Substitua com a imagem do documento padrão
+    # Carrega template do documento em escala de cinza
+    imagem_template = cv2.imread('template_documento.jpg', cv2.IMREAD_GRAYSCALE)
+    if imagem_template is None:
+        st.error("Erro: o template do documento não foi encontrado.")
+        return None, imagem_rgb
+
     kp2, des2 = orb.detectAndCompute(imagem_template, None)
 
-    # Usando o BFMatcher para encontrar correspondências
+    # Verificações para evitar erro do OpenCV
+    if des1 is None or des2 is None:
+        st.warning("Não foi possível detectar características suficientes. Verifique a imagem ou o template.")
+        return None, imagem_rgb
+
+    if des1.shape[1] != des2.shape[1]:
+        st.warning("Descritores incompatíveis entre imagem e template.")
+        return None, imagem_rgb
+
+    # Matcher
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(des1, des2)
 
-    # Ordena as correspondências com base na distância
-    matches = sorted(matches, key = lambda x:x.distance)
+    if len(matches) < 10:
+        st.warning("Correspondências insuficientes. Documento pode não estar visível.")
+        return None, imagem_rgb
 
-    # Usa as correspondências melhores para encontrar os pontos-chave
-    pontos1 = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
-    pontos2 = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+    # Ordena e extrai os melhores matches
+    matches = sorted(matches, key=lambda x: x.distance)
+    src_pts = np.float32([kp1[m.queryIdx].pt for m in matches[:20]]).reshape(-1, 1, 2)
+    dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches[:20]]).reshape(-1, 1, 2)
 
-    # Homografia para alinhar a imagem com o template do documento
-    M, mask = cv2.findHomography(pontos1, pontos2, cv2.RANSAC, 5.0)
+    # Estima homografia
+    M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+    if M is None:
+        st.warning("Não foi possível estimar a transformação do documento.")
+        return None, imagem_rgb
 
-    if M is not None:
-        # Aplica a transformação de perspectiva para corrigir a imagem
-        h, w, _ = imagem_rgb.shape
-        imagem_corrigida = cv2.warpPerspective(imagem_rgb, M, (w, h))
-        
-        # Detecta os contornos da imagem corrigida
-        imagem_gray_corrigida = cv2.cvtColor(imagem_corrigida, cv2.COLOR_RGB2GRAY)
-        _, imagem_binaria = cv2.threshold(imagem_gray_corrigida, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    h, w = imagem_template.shape
+    pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
+    dst = cv2.perspectiveTransform(pts, M)
 
-        contornos, _ = cv2.findContours(imagem_binaria, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Desenha a região detectada na imagem original
+    imagem_resultado = imagem_rgb.copy()
+    cv2.polylines(imagem_resultado, [np.int32(dst)], True, (0, 255, 0), 3, cv2.LINE_AA)
 
-        maior_area = 0
-        contorno_documento = None
+    # Recorta a região do documento
+    try:
+        recorte = cv2.warpPerspective(imagem_rgb, M, (w, h))
+    except:
+        st.warning("Erro ao recortar o documento.")
+        return None, imagem_resultado
 
-        for contorno in contornos:
-            peri = cv2.arcLength(contorno, True)
-            aprox = cv2.approxPolyDP(contorno, 0.02 * peri, True)
-            if len(aprox) == 4:
-                area = cv2.contourArea(aprox)
-                if area > maior_area:
-                    maior_area = area
-                    contorno_documento = aprox
-
-        if contorno_documento is not None:
-            return contorno_documento, imagem_corrigida
-    return None, imagem_rgb
+    # Exibe resultado
+    st.image(recorte, caption="Documento detectado", use_column_width=True)
+    return recorte, imagem_resultado
 
 def recorte_documento(imagem, pontos):
     pontos = ordenar_pontos(pontos)
