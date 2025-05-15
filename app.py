@@ -27,18 +27,30 @@ def carrega_imagem():
     uploaded_file = st.file_uploader('Escolha um comprovante', type=['jpg','jpeg','png']) 
 
     if uploaded_file is not None:
-        image_data = uploaded_file.read()  # Conteúdo binário da imagem
-        image = Image.open(io.BytesIO(image_data))   
-
-        st.image(image)
+        image_data = uploaded_file.read()
+        image_pil = Image.open(io.BytesIO(image_data)).convert('RGB')
+        st.image(image_pil, caption='Imagem Original', use_column_width=True)
         st.success('Imagem foi carregada com sucesso')
 
-        # Redimensiona a imagem para 520x112 (necessário para o modelo)
-        image = image.resize((520, 112)) #largura x altura
-        image = np.array(image, dtype=np.float32) / 255.0
-        image = np.expand_dims(image, axis=0)
+        # Converte para OpenCV (RGB)
+        imagem_np = np.array(image_pil)
 
-        return image, image_data  # <- retorna a imagem e os bytes para hash
+        # Tenta detectar o documento na imagem original
+        pontos = detectar_documento(imagem_np)
+
+        if pontos is not None:
+            imagem_com_contorno = imagem_np.copy()
+            cv2.polylines(imagem_com_contorno, [pontos], isClosed=True, color=(0, 255, 0), thickness=3)
+            st.image(imagem_com_contorno, caption='Documento Detectado', use_column_width=True)
+        else:
+            st.warning("Documento não foi detectado automaticamente.")
+
+        # Agora prepara a imagem para o modelo
+        imagem_redimensionada = image_pil.resize((520, 112))  # Largura x Altura
+        imagem_modelo = np.array(imagem_redimensionada, dtype=np.float32) / 255.0
+        imagem_modelo = np.expand_dims(imagem_modelo, axis=0)
+
+        return imagem_modelo, image_data
     return None, None
 
 def previsao(interpreter, image):
@@ -77,7 +89,6 @@ def detectar_documento(imagem_rgb):
     blur = cv2.GaussianBlur(imagem_gray, (5, 5), 0)
     edges = cv2.Canny(blur, 75, 200)
 
-    # Encontra contornos
     contornos, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     contornos = sorted(contornos, key=cv2.contourArea, reverse=True)
 
@@ -86,7 +97,7 @@ def detectar_documento(imagem_rgb):
         aprox = cv2.approxPolyDP(c, 0.02 * peri, True)
 
         if len(aprox) == 4:
-            return aprox.reshape(4, 2)  # retorna as 4 coordenadas
+            return aprox.reshape(4, 2)  # retorna coordenadas do documento
 
     return None
 
@@ -106,17 +117,7 @@ def main():
     #st.write(image_bytes)
     #classifica
     if image is not None:
-        pontos = detectar_documento(image)
-
-        if pontos is not None:
-            imagem_com_contorno = image.copy()
-            cv2.polylines(imagem_com_contorno, [pontos], isClosed=True, color=(0, 255, 0), thickness=3)
-
-            st.image(imagem_com_contorno, caption='Documento Detectado', use_column_width=True)
-            previsao(interpreter,image)
-        else:
-            st.warning("Nenhum documento detectado automaticamente.")
-        
+       previsao(interpreter,image)
         
         #Valida
         #valida_imagem_duplicada(image_bytes)
