@@ -1,4 +1,5 @@
 import streamlit as st
+import tensorflow as tf
 import gdown
 
 @st.cache_resource
@@ -17,7 +18,7 @@ def carrega_modelo():
     return interpreter
 
 def main():
-    
+
     st.set_page_config(
     page_title="Classifica Comprovantes de adesão",
     )
