@@ -67,9 +67,9 @@ def previsao(interpreter, image):
     st.json(df.set_index('classes')['probabilidades (%)'].round(2).to_dict())
     
     
-    fig = px.bar(df,y='classes',x='probabilidades (%)',  orientation='h', text='probabilidades (%)', title='Probabilidade de Classes de Comprovantes')
+    #fig = px.bar(df,y='classes',x='probabilidades (%)',  orientation='h', text='probabilidades (%)', title='Probabilidade de Classes de Comprovantes')
     
-    st.plotly_chart(fig)
+    #st.plotly_chart(fig)
 
 def main():
 
