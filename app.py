@@ -1,5 +1,6 @@
 import streamlit as st
 import tensorflow as tf
+from PIL import Image
 import gdown
 
 @st.cache_resource
@@ -17,6 +18,24 @@ def carrega_modelo():
 
     return interpreter
 
+def carrega_imagem():
+    uploaded_file = st.file_uploader('Escolha um comprovante', type=['jpg','jpeg','png']) 
+
+    if uploaded_file is not None:
+        image_data = uploaded_file.read()  # Conteúdo binário da imagem
+        image = Image.open(io.BytesIO(image_data))   
+
+        st.image(image)
+        st.success('Imagem foi carregada com sucesso')
+
+        # Redimensiona a imagem para 112x520 (necessário para o modelo)
+        image = image.resize((112, 520))
+        image = np.array(image, dtype=np.float32) / 255.0
+        image = np.expand_dims(image, axis=0)
+
+        return image, image_data  # <- retorna a imagem e os bytes para hash
+    return None, None
+
 def main():
 
     st.set_page_config(
@@ -28,7 +47,7 @@ def main():
     #carrega modelo
     interpreter = carrega_modelo()
     #carrega imagem
-    #image, image_bytes = carrega_imagem()
+    image, image_bytes = carrega_imagem()
     #st.write("Bytes da imagem")
     #st.write(image_bytes)
     #classifica
