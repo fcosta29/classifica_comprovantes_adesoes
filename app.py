@@ -32,25 +32,23 @@ def carrega_imagem():
         st.image(image_pil, caption='Imagem Original', use_column_width=True)
         st.success('Imagem foi carregada com sucesso')
 
-        # Converte para OpenCV (RGB)
         imagem_np = np.array(image_pil)
-
-        # Tenta detectar o documento na imagem original
         pontos = detectar_documento(imagem_np)
 
         if pontos is not None:
-            imagem_com_contorno = imagem_np.copy()
-            cv2.polylines(imagem_com_contorno, [pontos], isClosed=True, color=(0, 255, 0), thickness=3)
-            st.image(imagem_com_contorno, caption='Documento Detectado', use_column_width=True)
+            documento_crop = recorte_documento(imagem_np, pontos)
+            st.image(documento_crop, caption='Documento Detectado e Recortado', use_column_width=True)
+
+            # Redimensiona para o modelo
+            documento_crop_resized = cv2.resize(documento_crop, (520, 112))  # Largura x Altura
+            documento_model = documento_crop_resized.astype(np.float32) / 255.0
+            documento_model = np.expand_dims(documento_model, axis=0)
+
+            return documento_model, image_data
         else:
             st.warning("Documento não foi detectado automaticamente.")
+            return None, None
 
-        # Agora prepara a imagem para o modelo
-        imagem_redimensionada = image_pil.resize((520, 112))  # Largura x Altura
-        imagem_modelo = np.array(imagem_redimensionada, dtype=np.float32) / 255.0
-        imagem_modelo = np.expand_dims(imagem_modelo, axis=0)
-
-        return imagem_modelo, image_data
     return None, None
 
 def previsao(interpreter, image):
@@ -95,11 +93,48 @@ def detectar_documento(imagem_rgb):
     for c in contornos:
         peri = cv2.arcLength(c, True)
         aprox = cv2.approxPolyDP(c, 0.02 * peri, True)
-
         if len(aprox) == 4:
-            return aprox.reshape(4, 2)  # retorna coordenadas do documento
-
+            return aprox.reshape(4, 2)
     return None
+
+def recorte_documento(imagem, pontos):
+    pontos = ordenar_pontos(pontos)
+    (tl, tr, br, bl) = pontos
+
+    # Calcula largura e altura do novo documento
+    larguraA = np.linalg.norm(br - bl)
+    larguraB = np.linalg.norm(tr - tl)
+    largura = max(int(larguraA), int(larguraB))
+
+    alturaA = np.linalg.norm(tr - br)
+    alturaB = np.linalg.norm(tl - bl)
+    altura = max(int(alturaA), int(alturaB))
+
+    destino = np.array([
+        [0, 0],
+        [largura - 1, 0],
+        [largura - 1, altura - 1],
+        [0, altura - 1]
+    ], dtype="float32")
+
+    # Perspectiva
+    M = cv2.getPerspectiveTransform(pontos, destino)
+    warped = cv2.warpPerspective(imagem, M, (largura, altura))
+
+    return warped
+
+def ordenar_pontos(pontos):
+    """Ordena os pontos no sentido top-left, top-right, bottom-right, bottom-left"""
+    ret = np.zeros((4, 2), dtype="float32")
+    s = pontos.sum(axis=1)
+    ret[0] = pontos[np.argmin(s)]
+    ret[2] = pontos[np.argmax(s)]
+
+    diff = np.diff(pontos, axis=1)
+    ret[1] = pontos[np.argmin(diff)]
+    ret[3] = pontos[np.argmax(diff)]
+
+    return ret
 
 def main():
 
