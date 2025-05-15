@@ -5,6 +5,3 @@ pillow
 gdown
 plotly
 tensorflow
-imagehash
-boto3
-opencv-python-headless==4.7.0.72
