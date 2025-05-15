@@ -33,14 +33,14 @@ def carrega_imagem():
         st.success('Imagem foi carregada com sucesso')
 
         imagem_np = np.array(image_pil)
-        contorno = detectar_documento(imagem_np)
+        contorno, imagem_corrigida = detectar_documento(imagem_np)
 
         if contorno is not None:
-            # Recorta o documento da imagem
-            documento_crop = recorte_documento(imagem_np, contorno)
+            # Recorta o documento da imagem corrigida
+            documento_crop = recorte_documento(imagem_corrigida, contorno)
             st.image(documento_crop, caption='Documento Detectado', use_column_width=True)
 
-            # Redimensionar para modelo
+            # Redimensionar para o modelo
             documento_model = cv2.resize(documento_crop, (520, 112))
             documento_model = documento_model.astype(np.float32) / 255.0
             documento_model = np.expand_dims(documento_model, axis=0)
@@ -84,47 +84,63 @@ def previsao(interpreter, image):
     st.plotly_chart(fig)
 
 def detectar_documento(imagem_rgb):
-    # Pré-processamento da imagem
+    # Converte a imagem para escala de cinza
     imagem_gray = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
-    
+
     # Equalização de histograma para melhorar o contraste
     imagem_gray = cv2.equalizeHist(imagem_gray)
     
     # Suavização para reduzir ruído
     blur = cv2.GaussianBlur(imagem_gray, (5, 5), 0)
 
-    # Detecção de bordas com Canny
-    edges = cv2.Canny(blur, 50, 150)
+    # Detecta características usando ORB
+    orb = cv2.ORB_create()
+    kp1, des1 = orb.detectAndCompute(imagem_gray, None)
 
-    # Aumentar as bordas para capturar maiores contornos
-    dilatada = cv2.dilate(edges, None, iterations=2)
-    
-    # Encontrar os contornos
-    contornos, _ = cv2.findContours(dilatada, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Cria uma imagem padrão do documento (idealmente, deve ter uma imagem "template" do documento)
+    imagem_template = cv2.imread('template_documento.jpg', cv2.IMREAD_GRAYSCALE)  # Substitua com a imagem do documento padrão
+    kp2, des2 = orb.detectAndCompute(imagem_template, None)
 
-    maior_area = 0
-    contorno_documento = None
+    # Usando o BFMatcher para encontrar correspondências
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = bf.match(des1, des2)
 
-    for contorno in contornos:
-        # Aproximação de polígono (verificando que o contorno é aproximadamente retangular)
-        peri = cv2.arcLength(contorno, True)
-        aprox = cv2.approxPolyDP(contorno, 0.02 * peri, True)
+    # Ordena as correspondências com base na distância
+    matches = sorted(matches, key = lambda x:x.distance)
 
-        # Verifica se é um quadrilátero
-        if len(aprox) == 4:
-            area = cv2.contourArea(aprox)
-            x, y, w, h = cv2.boundingRect(aprox)
-            proporcao = w / float(h)
+    # Usa as correspondências melhores para encontrar os pontos-chave
+    pontos1 = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+    pontos2 = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
 
-            # Só considera se tiver área suficiente e for aproximadamente "folha"
-            if area > 50000 and 0.5 < proporcao < 2.0:
+    # Homografia para alinhar a imagem com o template do documento
+    M, mask = cv2.findHomography(pontos1, pontos2, cv2.RANSAC, 5.0)
+
+    if M is not None:
+        # Aplica a transformação de perspectiva para corrigir a imagem
+        h, w, _ = imagem_rgb.shape
+        imagem_corrigida = cv2.warpPerspective(imagem_rgb, M, (w, h))
+        
+        # Detecta os contornos da imagem corrigida
+        imagem_gray_corrigida = cv2.cvtColor(imagem_corrigida, cv2.COLOR_RGB2GRAY)
+        _, imagem_binaria = cv2.threshold(imagem_gray_corrigida, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        contornos, _ = cv2.findContours(imagem_binaria, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        maior_area = 0
+        contorno_documento = None
+
+        for contorno in contornos:
+            peri = cv2.arcLength(contorno, True)
+            aprox = cv2.approxPolyDP(contorno, 0.02 * peri, True)
+            if len(aprox) == 4:
+                area = cv2.contourArea(aprox)
                 if area > maior_area:
                     maior_area = area
                     contorno_documento = aprox
 
-    if contorno_documento is not None:
-        return contorno_documento
-    return None
+        if contorno_documento is not None:
+            return contorno_documento, imagem_corrigida
+    return None, imagem_rgb
 
 def recorte_documento(imagem, pontos):
     pontos = ordenar_pontos(pontos)
