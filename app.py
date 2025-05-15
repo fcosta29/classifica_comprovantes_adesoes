@@ -37,16 +37,17 @@ def carrega_imagem():
 
         if pontos is not None:
             documento_crop = recorte_documento(imagem_np, pontos)
-            st.image(documento_crop, caption='Documento Detectado e Recortado', use_column_width=True)
+            st.image(documento_crop, caption='Documento Detectado (Recortado)', use_column_width=True)
 
-            # Redimensiona para o modelo
-            documento_crop_resized = cv2.resize(documento_crop, (520, 112))  # Largura x Altura
-            documento_model = documento_crop_resized.astype(np.float32) / 255.0
+            # Redimensionar para o modelo
+            documento_model = cv2.resize(documento_crop, (520, 112))  # Largura x Altura
+            documento_model = documento_model.astype(np.float32) / 255.0
             documento_model = np.expand_dims(documento_model, axis=0)
 
             return documento_model, image_data
+
         else:
-            st.warning("Documento não foi detectado automaticamente.")
+            st.warning("Não foi possível detectar o documento. Tente outra imagem.")
             return None, None
 
     return None, None
@@ -85,23 +86,31 @@ def previsao(interpreter, image):
 def detectar_documento(imagem_rgb):
     imagem_gray = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
     blur = cv2.GaussianBlur(imagem_gray, (5, 5), 0)
-    edges = cv2.Canny(blur, 75, 200)
+    edges = cv2.Canny(blur, 50, 150)
 
-    contornos, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    contornos = sorted(contornos, key=cv2.contourArea, reverse=True)
+    contornos, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    doc_contorno = None
+    max_area = 0
 
     for c in contornos:
         peri = cv2.arcLength(c, True)
         aprox = cv2.approxPolyDP(c, 0.02 * peri, True)
-        if len(aprox) == 4:
-            return aprox.reshape(4, 2)
+        area = cv2.contourArea(c)
+
+        if len(aprox) == 4 and area > 10000:  # área mínima evita logos
+            if area > max_area:
+                doc_contorno = aprox
+                max_area = area
+
+    if doc_contorno is not None:
+        return doc_contorno.reshape(4, 2)
     return None
 
 def recorte_documento(imagem, pontos):
     pontos = ordenar_pontos(pontos)
     (tl, tr, br, bl) = pontos
 
-    # Calcula largura e altura do novo documento
     larguraA = np.linalg.norm(br - bl)
     larguraB = np.linalg.norm(tr - tl)
     largura = max(int(larguraA), int(larguraB))
@@ -117,10 +126,8 @@ def recorte_documento(imagem, pontos):
         [0, altura - 1]
     ], dtype="float32")
 
-    # Perspectiva
     M = cv2.getPerspectiveTransform(pontos, destino)
     warped = cv2.warpPerspective(imagem, M, (largura, altura))
-
     return warped
 
 def ordenar_pontos(pontos):
@@ -129,11 +136,9 @@ def ordenar_pontos(pontos):
     s = pontos.sum(axis=1)
     ret[0] = pontos[np.argmin(s)]
     ret[2] = pontos[np.argmax(s)]
-
     diff = np.diff(pontos, axis=1)
     ret[1] = pontos[np.argmin(diff)]
     ret[3] = pontos[np.argmax(diff)]
-
     return ret
 
 def main():
