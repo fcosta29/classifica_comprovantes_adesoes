@@ -2,6 +2,7 @@ import streamlit as st
 import tensorflow as tf
 from PIL import Image
 import gdown
+import io
 
 @st.cache_resource
 
