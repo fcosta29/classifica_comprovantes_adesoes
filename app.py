@@ -90,16 +90,42 @@ def detectar_documento(imagem_rgb):
     imagem_edges = cv2.Canny(imagem_blur, 75, 200)
 
     contornos, _ = cv2.findContours(imagem_edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    contornos = sorted(contornos, key=cv2.contourArea, reverse=True)[:5]
+
+    altura_img, largura_img = imagem.shape[:2]
+    area_img = altura_img * largura_img
+
+    melhor_contorno = None
+    melhor_area = 0
 
     for contorno in contornos:
         perimetro = cv2.arcLength(contorno, True)
         aprox = cv2.approxPolyDP(contorno, 0.02 * perimetro, True)
 
-        if len(aprox) == 4:
-            pontos = aprox.reshape(4, 2)
-            pontos_ordenados = ordenar_pontos(pontos)
-            return pontos_ordenados, imagem_rgb
+        if len(aprox) != 4:
+            continue
+
+        area = cv2.contourArea(aprox)
+
+        # Considerar documentos médios (por ex: entre 10% e 60% da imagem)
+        if area < area_img * 0.1 or area > area_img * 0.6:
+            continue
+
+        pontos = aprox.reshape(4, 2)
+        pontos_ordenados = ordenar_pontos(pontos)
+
+        # Verifica proporção (largura vs altura) entre 1:2 e 2:1 — genérico
+        (tl, tr, br, bl) = pontos_ordenados
+        largura = np.linalg.norm(tr - tl)
+        altura = np.linalg.norm(bl - tl)
+        proporcao = altura / largura if largura > 0 else 0
+
+        if 0.5 < proporcao < 2.0:  # permite formatos mais flexíveis
+            if area > melhor_area:
+                melhor_area = area
+                melhor_contorno = pontos_ordenados
+
+    if melhor_contorno is not None:
+        return melhor_contorno, imagem_rgb
 
     return None, None
 
