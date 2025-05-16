@@ -84,61 +84,51 @@ def previsao(interpreter, image):
     st.plotly_chart(fig)
 
 def detectar_documento(imagem_rgb):
-    imagem_cinza = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
-    imagem_blur = cv2.GaussianBlur(imagem_cinza, (5, 5), 0)
-    imagem_borda = cv2.Canny(imagem_blur, 75, 200)
+    imagem = imagem_rgb.copy()
+    imagem_gray = cv2.cvtColor(imagem, cv2.COLOR_RGB2GRAY)
+    imagem_blur = cv2.GaussianBlur(imagem_gray, (5, 5), 0)
+    imagem_edges = cv2.Canny(imagem_blur, 75, 200)
 
-    contornos, _ = cv2.findContours(imagem_borda, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    contornos = sorted(contornos, key=cv2.contourArea, reverse=True)
+    contornos, _ = cv2.findContours(imagem_edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    contornos = sorted(contornos, key=cv2.contourArea, reverse=True)[:5]
 
     for contorno in contornos:
         perimetro = cv2.arcLength(contorno, True)
         aprox = cv2.approxPolyDP(contorno, 0.02 * perimetro, True)
 
         if len(aprox) == 4:
-            # Encontrou um quadrilátero
-            return aprox, imagem_rgb
+            pontos = aprox.reshape(4, 2)
+            pontos_ordenados = ordenar_pontos(pontos)
+            return pontos_ordenados, imagem_rgb
 
-    return None, imagem_rgb
+    return None, None
 
 def recorte_documento(imagem, pontos):
-    pontos_ordenados = ordenar_pontos(pontos)
-
-    (tl, tr, br, bl) = pontos_ordenados
-
-    # Largura máxima
-    larguraA = np.linalg.norm(br - bl)
-    larguraB = np.linalg.norm(tr - tl)
-    largura_max = int(max(larguraA, larguraB))
-
-    # Altura máxima
-    alturaA = np.linalg.norm(tr - br)
-    alturaB = np.linalg.norm(tl - bl)
-    altura_max = int(max(alturaA, alturaB))
+    largura_doc = 800
+    altura_doc = 1000
 
     destino = np.array([
         [0, 0],
-        [largura_max - 1, 0],
-        [largura_max - 1, altura_max - 1],
-        [0, altura_max - 1]
+        [largura_doc - 1, 0],
+        [largura_doc - 1, altura_doc - 1],
+        [0, altura_doc - 1]
     ], dtype="float32")
 
-    matriz = cv2.getPerspectiveTransform(pontos_ordenados, destino)
-    warped = cv2.warpPerspective(imagem, matriz, (largura_max, altura_max))
-
-    return warped
+    matriz = cv2.getPerspectiveTransform(pontos, destino)
+    imagem_transformada = cv2.warpPerspective(imagem, matriz, (largura_doc, altura_doc))
+    return imagem_transformada
 
 def ordenar_pontos(pontos):
-    pontos = pontos.reshape((4, 2))
+    pontos = np.array(pontos, dtype="float32")
     soma = pontos.sum(axis=1)
     diff = np.diff(pontos, axis=1)
 
-    topo_esquerda = pontos[np.argmin(soma)]
-    baixo_direita = pontos[np.argmax(soma)]
-    topo_direita = pontos[np.argmin(diff)]
-    baixo_esquerda = pontos[np.argmax(diff)]
+    topo_esquerdo = pontos[np.argmin(soma)]
+    base_direita = pontos[np.argmax(soma)]
+    topo_direito = pontos[np.argmin(diff)]
+    base_esquerda = pontos[np.argmax(diff)]
 
-    return np.array([topo_esquerda, topo_direita, baixo_direita, baixo_esquerda], dtype='float32')
+    return np.array([topo_esquerdo, topo_direito, base_direita, base_esquerda], dtype="float32")
 
 def main():
 
