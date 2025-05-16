@@ -84,102 +84,61 @@ def previsao(interpreter, image):
     st.plotly_chart(fig)
 
 def detectar_documento(imagem_rgb):
-    imagem_gray = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
+    imagem_cinza = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
+    imagem_blur = cv2.GaussianBlur(imagem_cinza, (5, 5), 0)
+    imagem_borda = cv2.Canny(imagem_blur, 75, 200)
 
-    # Detector ORB
-    orb = cv2.ORB_create()
+    contornos, _ = cv2.findContours(imagem_borda, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    contornos = sorted(contornos, key=cv2.contourArea, reverse=True)
 
-    # Detecta keypoints e descritores da imagem de entrada
-    kp1, des1 = orb.detectAndCompute(imagem_gray, None)
+    for contorno in contornos:
+        perimetro = cv2.arcLength(contorno, True)
+        aprox = cv2.approxPolyDP(contorno, 0.02 * perimetro, True)
 
-    # Carrega template do documento em escala de cinza
-    imagem_template = cv2.imread('template_documento.jpg', cv2.IMREAD_GRAYSCALE)
-    if imagem_template is None:
-        st.error("Erro: o template do documento não foi encontrado.")
-        return None, imagem_rgb
+        if len(aprox) == 4:
+            # Encontrou um quadrilátero
+            return aprox, imagem_rgb
 
-    kp2, des2 = orb.detectAndCompute(imagem_template, None)
-
-    # Verificações para evitar erro do OpenCV
-    if des1 is None or des2 is None:
-        st.warning("Não foi possível detectar características suficientes. Verifique a imagem ou o template.")
-        return None, imagem_rgb
-
-    if des1.shape[1] != des2.shape[1]:
-        st.warning("Descritores incompatíveis entre imagem e template.")
-        return None, imagem_rgb
-
-    # Matcher
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = bf.match(des1, des2)
-
-    if len(matches) < 10:
-        st.warning("Correspondências insuficientes. Documento pode não estar visível.")
-        return None, imagem_rgb
-
-    # Ordena e extrai os melhores matches
-    matches = sorted(matches, key=lambda x: x.distance)
-    src_pts = np.float32([kp1[m.queryIdx].pt for m in matches[:20]]).reshape(-1, 1, 2)
-    dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches[:20]]).reshape(-1, 1, 2)
-
-    # Estima homografia
-    M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-    if M is None:
-        st.warning("Não foi possível estimar a transformação do documento.")
-        return None, imagem_rgb
-
-    h, w = imagem_template.shape
-    pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
-    dst = cv2.perspectiveTransform(pts, M)
-
-    # Desenha a região detectada na imagem original
-    imagem_resultado = imagem_rgb.copy()
-    cv2.polylines(imagem_resultado, [np.int32(dst)], True, (0, 255, 0), 3, cv2.LINE_AA)
-
-    # Recorta a região do documento
-    try:
-        recorte = cv2.warpPerspective(imagem_rgb, M, (w, h))
-    except:
-        st.warning("Erro ao recortar o documento.")
-        return None, imagem_resultado
-
-    # Exibe resultado
-    st.image(recorte, caption="Documento detectado", use_column_width=True)
-    return recorte, imagem_resultado
+    return None, imagem_rgb
 
 def recorte_documento(imagem, pontos):
-    pontos = ordenar_pontos(pontos)
-    (tl, tr, br, bl) = pontos
+    pontos_ordenados = ordenar_pontos(pontos)
 
+    (tl, tr, br, bl) = pontos_ordenados
+
+    # Largura máxima
     larguraA = np.linalg.norm(br - bl)
     larguraB = np.linalg.norm(tr - tl)
-    largura = max(int(larguraA), int(larguraB))
+    largura_max = int(max(larguraA, larguraB))
 
+    # Altura máxima
     alturaA = np.linalg.norm(tr - br)
     alturaB = np.linalg.norm(tl - bl)
-    altura = max(int(alturaA), int(alturaB))
+    altura_max = int(max(alturaA, alturaB))
 
     destino = np.array([
         [0, 0],
-        [largura - 1, 0],
-        [largura - 1, altura - 1],
-        [0, altura - 1]
+        [largura_max - 1, 0],
+        [largura_max - 1, altura_max - 1],
+        [0, altura_max - 1]
     ], dtype="float32")
 
-    M = cv2.getPerspectiveTransform(pontos, destino)
-    warped = cv2.warpPerspective(imagem, M, (largura, altura))
+    matriz = cv2.getPerspectiveTransform(pontos_ordenados, destino)
+    warped = cv2.warpPerspective(imagem, matriz, (largura_max, altura_max))
+
     return warped
 
 def ordenar_pontos(pontos):
-    pontos = pontos.reshape(4, 2)
-    ret = np.zeros((4, 2), dtype="float32")
-    s = pontos.sum(axis=1)
-    ret[0] = pontos[np.argmin(s)]
-    ret[2] = pontos[np.argmax(s)]
+    pontos = pontos.reshape((4, 2))
+    soma = pontos.sum(axis=1)
     diff = np.diff(pontos, axis=1)
-    ret[1] = pontos[np.argmin(diff)]
-    ret[3] = pontos[np.argmax(diff)]
-    return ret
+
+    topo_esquerda = pontos[np.argmin(soma)]
+    baixo_direita = pontos[np.argmax(soma)]
+    topo_direita = pontos[np.argmin(diff)]
+    baixo_esquerda = pontos[np.argmax(diff)]
+
+    return np.array([topo_esquerda, topo_direita, baixo_direita, baixo_esquerda], dtype='float32')
 
 def main():
 
