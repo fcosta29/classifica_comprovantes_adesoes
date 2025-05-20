@@ -28,11 +28,12 @@ def carrega_imagem():
 
     if uploaded_file is not None:
         image_data = uploaded_file.read()
-        image_pil = Image.open(io.BytesIO(image_data)).convert('RGB')
-        st.image(image_pil, caption='Imagem Original', use_column_width=True)
-        st.success('Imagem foi carregada com sucesso')
+        image = Image.open(io.BytesIO(image_data))
+        #image_pil = Image.open(io.BytesIO(image_data)).convert('RGB')
+        #st.image(image_pil, caption='Imagem Original', use_column_width=True)
+        #st.success('Imagem foi carregada com sucesso')
 
-        st.image(image_pil)
+        st.image(image)
         st.success('Imagem foi carregada com sucesso')
 
         image = image.resize((520, 112))
