@@ -32,23 +32,32 @@ def carrega_imagem():
         st.image(image_pil, caption='Imagem Original', use_column_width=True)
         st.success('Imagem foi carregada com sucesso')
 
-        imagem_np = np.array(image_pil)
-        contorno, imagem_corrigida = detectar_documento(imagem_np)
+        st.image(image_pil)
+        st.success('Imagem foi carregada com sucesso')
 
-        if contorno is not None:
+        image = image.resize((520, 112))
+        image = np.array(image, dtype=np.float32) / 255.0
+        image = np.expand_dims(image, axis=0)
+
+        return image, image_data
+
+        # imagem_np = np.array(image_pil)
+        #contorno, imagem_corrigida = detectar_documento(imagem_np)
+
+        #if contorno is not None:
             # Recorta o documento da imagem corrigida
-            documento_crop = recorte_documento(imagem_corrigida, contorno)
-            st.image(documento_crop, caption='Documento Detectado', use_column_width=True)
+            #documento_crop = recorte_documento(imagem_corrigida, contorno)
+            #st.image(documento_crop, caption='Documento Detectado', use_column_width=True)
 
             # Redimensionar para o modelo
-            documento_model = cv2.resize(documento_crop, (520, 112))
-            documento_model = documento_model.astype(np.float32) / 255.0
-            documento_model = np.expand_dims(documento_model, axis=0)
+            #documento_model = cv2.resize(documento_crop, (520, 112))
+            #documento_model = documento_model.astype(np.float32) / 255.0
+            #documento_model = np.expand_dims(documento_model, axis=0)
 
-            return documento_model, image_data
-        else:
-            st.warning("Documento não encontrado. Verifique iluminação ou ângulo.")
-            return None, None
+            #return documento_model, image_data
+        #else:
+            #st.warning("Documento não encontrado. Verifique iluminação ou ângulo.")
+            #return None, None
 
     return None, None
 
